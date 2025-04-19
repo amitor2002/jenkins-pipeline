@@ -15,7 +15,7 @@ def check_url(name, url):
         return False
 
 if __name__ == "__main__":
-    REMOTE_IP = '52.23.173.220'
+    REMOTE_IP = '3.93.188.22'
     local_ok = check_url("Local Container", "http://localhost:5000")
     remote_ok = check_url("Remote Production", f"http://{REMOTE_IP}:5000")
 

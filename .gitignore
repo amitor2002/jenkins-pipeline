@@ -45,7 +45,7 @@
 !*.c
 !*.h
 
-# Virtual environment 
+# Virtual environment (לא להעלות את התיקייה הזו)
 venv/
 
 # CSS
