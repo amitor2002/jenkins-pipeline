@@ -5,7 +5,6 @@ pipeline {
         DOCKER_IMAGE = 'amitor2002/weatherapp:latest'
         CONTAINER_NAME = 'weatherapp'
         APP_HOST = '172.31.29.27'
-        WORKSPACE = 'workspace'
     }
 
     stages {
@@ -25,7 +24,6 @@ pipeline {
                     . venv/bin/activate
                     pip install --upgrade pip
                     pip install pylint
-                    . venv/bin/activate
                     pylint app.py --fail-under=5
                 '''
             }
@@ -45,8 +43,9 @@ pipeline {
 
                     docker run -d -p 5000:5000 --name $CONTAINER_NAME $CONTAINER_NAME:latest || {
                         echo "❗ Port 5000 might already be in use. Showing usage:"
-                        sudo lsof -i :5000
-                        exit 1
+                        if command -v lsof > /dev/null; then
+                            lsof -i :5000 || echo "⚠️ Could not check port usage (lsof not available)"
+                        fi
                     }
 
                     
@@ -54,13 +53,17 @@ pipeline {
                     sleep 5
 
                     echo "🧪 Running reachability test script..."
-                    python3 /home/ubuntu/workspace/weatherApp-pipeline/isreachable.py
+                    python3 isreachable.py
                      
                 '''
             }
         }
 
         stage('Push to Docker Hub') {
+            when {
+                branch 'main'
+            }
+
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
@@ -73,6 +76,9 @@ pipeline {
         }
 
         stage('Deploy to Remote Server') {
+             when {
+                branch 'main'
+            }
             steps {
                  sshagent(credentials: ['gitlab-instance-key.pem']) {
                      sh '''
@@ -81,15 +87,13 @@ pipeline {
                         cd /home/ubuntu/weatherApp/
 
                         echo "🔍 Stopping and removing existing containers..."
-                        docker-compose down
+                        docker compose down
 
                         echo "⬇️ Pulling latest image..."
                         docker compose pull
 
                         echo "🚀 Starting application with Docker Compose..."
                         docker compose up -d --force-recreate
-                        docker image prune -f
-
 ENDSSH
             '''
             }
@@ -97,6 +101,10 @@ ENDSSH
     }
 
         stage('Verify Remote Deployment') {
+            when {
+                branch 'main'
+            }
+
             steps {
                 sshagent(credentials: ['gitlab-instance-key.pem']) {
                     sh '''
@@ -119,37 +127,36 @@ ENDSSH
             echo 'Pipeline execution completed.'
 
             sh '''
-                echo "🧹 Cleaning local Docker resources..."
-                docker stop $CONTAINER_NAME || true
-                docker rm $CONTAINER_NAME || true
-                docker rmi $CONTAINER_NAME:latest || true
-                docker container prune -f
-                docker image prune -af
-                docker volume prune -f
-                docker network prune -f
+            echo "🧹 Cleaning local Docker resources..."
+            docker stop $CONTAINER_NAME || true
+            docker rm $CONTAINER_NAME || true
+            docker rmi $CONTAINER_NAME:latest || true
+            docker container prune -f
+            docker image prune -af
+            docker volume prune -f
+            docker network prune -f
 
-                echo "🧹 Cleaning Jenkins workspace and cache..."
+            echo "🧹 Cleaning Jenkins workspace and cache..."
 
-                # Clean all files and subdirectories inside the workspace
-                rm -rf $WORKSPACE/* || true
-                find $WORKSPACE -type f -name ".*" -delete || true  # Delete hidden files
+            # Use Jenkins' built-in WORKSPACE environment variable safely
+            rm -rf "$WORKSPACE"/* || true
+            find "$WORKSPACE" -type f -name ".*" -delete || true  # Delete hidden files
+            find "$WORKSPACE" -type d -name ".*" -exec rm -rf {} + || true
 
-                # Clean hidden directories inside the workspace if any
-                find $WORKSPACE -type d -name ".*" -exec rm -rf {} + || true
+            # Clean the user's cache
+            rm -rf ~/.cache/* || true
 
-                # Clean the user's cache (there might be important files here, be careful)
-                rm -rf ~/.cache/* || true
+            # Clean Jenkins agent logs if exist
+            [ -d ~/agent/remoting/logs ] && rm -f ~/agent/remoting/logs/* || true
 
-                # Clean Jenkins agent logs
-                rm -f ~/agent/remoting/logs/* || true
-
-                echo "✅ Workspace and cache cleaned successfully!"            '''
+            echo "✅ Workspace and cache cleaned successfully!"
+            '''
         }
         success {
             slackSend (
                 channel: '#all-amitor2002',
                 color: 'good',
-                message: "✅ Build #${env.BUILD_NUMBER} succeeded in ${env.JOB_NAME}"
+                message: "✅ Build #${env.BUILD_NUMBER} of branch ${env.BRANCH_NAME} succeeded in ${env.JOB_NAME}"
             )
 
             echo '✅ Pipeline executed successfully.'
@@ -158,7 +165,7 @@ ENDSSH
             slackSend (
                 channel: '#all-amitor2002',
                 color: 'danger',
-                message: "❌ Build #${env.BUILD_NUMBER} failed in ${env.JOB_NAME}"
+                message: "❌ Build #${env.BUILD_NUMBER} of branch ${env.BRANCH_NAME} failed in ${env.JOB_NAME}"
             )
             echo '❌ Pipeline failed. Please check the logs for details.'
         }
