@@ -82,7 +82,7 @@ pipeline {
             steps {
                  sshagent(credentials: ['gitlab-instance-key.pem']) {
                      sh '''
-                        ssh -o StrictHostKeyChecking=no ubuntu@172.31.28.161 << 'ENDSSH'
+                        ssh -o StrictHostKeyChecking=no ubuntu@172.31.22.142 << 'ENDSSH'
                         echo "🔍 Navigating to application directory..."
                         cd /home/ubuntu/weatherApp/
 
@@ -108,7 +108,7 @@ ENDSSH
             steps {
                 sshagent(credentials: ['gitlab-instance-key.pem']) {
                     sh '''
-                        ssh -o StrictHostKeyChecking=no ubuntu@172.31.28.161 << 'ENDSSH'
+                        ssh -o StrictHostKeyChecking=no ubuntu@172.31.22.142 << 'ENDSSH'
                             echo "🧐 Checking if weatherapp is running..."
                             sudo docker ps -a
 
